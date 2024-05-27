@@ -1,0 +1,228 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>커뮤니티 게시판 예제</title>
+    <style>
+        body {
+            display: flex;
+            font-family: Arial, sans-serif;
+        }
+        .sidebar {
+            width: 200px;
+            border-right: 1px solid #ccc;
+            padding: 10px;
+        }
+        .content {
+            flex-grow: 1;
+            padding: 20px;
+        }
+        .item {
+            cursor: pointer;
+            padding: 5px;
+            border-bottom: 1px solid #ccc;
+        }
+        .item:hover {
+            background-color: #f0f0f0;
+        }
+        .form-group {
+            margin-bottom: 10px;
+        }
+        .form-group label {
+            display: block;
+        }
+        .board {
+            border: 1px solid #ccc;
+            padding: 10px;
+            margin-bottom: 10px;
+        }
+        .post {
+            border-bottom: 1px solid #eee;
+            padding: 5px 0;
+        }
+        .edit-form {
+            display: none;
+            margin-top: 10px;
+        }
+        .add-post-form {
+            margin-top: 10px;
+        }
+    </style>
+</head>
+<body>
+    <div class="sidebar">
+        <div class="form-group">
+            <label>
+                <input type="checkbox" id="selectAll"> 모두 선택
+            </label>
+        </div>
+        <div id="itemList"></div>
+        <div class="form-group">
+            <label for="newItem">새 항목:</label>
+            <input type="text" id="newItem">
+            <button id="addItemButton">추가</button>
+            <button id="deleteSelectedButton">선택 항목 삭제</button>
+        </div>
+    </div>
+    <div class="content" id="content">
+        여기에 항목 정보가 표시됩니다.
+    </div>
+
+    <script>
+        const contentDiv = document.getElementById('content');
+        const itemList = document.getElementById('itemList');
+        const newItemInput = document.getElementById('newItem');
+        const addItemButton = document.getElementById('addItemButton');
+        const deleteSelectedButton = document.getElementById('deleteSelectedButton');
+        const selectAllCheckbox = document.getElementById('selectAll');
+        let itemsData = JSON.parse(localStorage.getItem('itemsData')) || {};
+
+        // 로컬 저장소에서 항목을 불러와서 리스트에 추가
+        Object.keys(itemsData).forEach(contentId => {
+            const itemText = itemsData[contentId].title;
+            addItemToList(contentId, itemText);
+        });
+
+        // 새 항목 추가 이벤트 리스너
+        addItemButton.addEventListener('click', function() {
+            const newItemText = newItemInput.value.trim();
+            if (newItemText) {
+                const contentId = 'content' + (Object.keys(itemsData).length + 1);
+                itemsData[contentId] = { title: newItemText, posts: [] };
+                localStorage.setItem('itemsData', JSON.stringify(itemsData));
+                addItemToList(contentId, newItemText);
+                newItemInput.value = '';
+            }
+        });
+
+        // 선택된 항목 삭제 이벤트 리스너
+        deleteSelectedButton.addEventListener('click', function() {
+            const selectedItems = document.querySelectorAll('.item input[type="checkbox"]:checked');
+            selectedItems.forEach(itemCheckbox => {
+                const contentId = itemCheckbox.parentElement.getAttribute('data-content');
+                delete itemsData[contentId];
+                itemCheckbox.parentElement.remove();
+            });
+            localStorage.setItem('itemsData', JSON.stringify(itemsData));
+            contentDiv.innerHTML = '여기에 항목 정보가 표시됩니다.';
+        });
+
+        // 모두 선택 체크박스 이벤트 리스너
+        selectAllCheckbox.addEventListener('change', function() {
+            const checkboxes = document.querySelectorAll('.item input[type="checkbox"]');
+            checkboxes.forEach(checkbox => {
+                checkbox.checked = selectAllCheckbox.checked;
+            });
+        });
+
+        function addItemToList(contentId, itemText) {
+            const newItem = document.createElement('div');
+            newItem.className = 'item';
+            newItem.setAttribute('data-content', contentId);
+            newItem.innerHTML = `<input type="checkbox"> ${itemText}`;
+            newItem.addEventListener('click', function(e) {
+                if (e.target.tagName !== 'INPUT') {
+                    displayContent(contentId);
+                }
+            });
+            itemList.appendChild(newItem);
+        }
+
+        function displayContent(contentId) {
+            const itemData = itemsData[contentId];
+            if (itemData) {
+                contentDiv.innerHTML = generateBoardContent(itemData.title, itemData.posts, contentId);
+                attachEditButtons(contentId);
+                attachTitleEditButton(contentId);
+                attachAddPostButton(contentId);
+            } else {
+                contentDiv.innerHTML = '정보를 찾을 수 없습니다.';
+            }
+        }
+
+        function generateBoardContent(title, posts, contentId) {
+            let postsHTML = posts.map((post, index) => `
+                <div class="post" data-post-id="${contentId}-post${index}">
+                    ${post}
+                    <button class="edit-button">수정</button>
+                </div>
+            `).join('');
+            return `
+                <div class="board">
+                    <h2 id="boardTitle">${title} <button id="editTitleButton">제목 수정</button></h2>
+                    ${postsHTML}
+                    <div class="edit-form">
+                        <textarea id="editText"></textarea>
+                        <button id="saveEditButton">저장</button>
+                        <button id="cancelEditButton">취소</button>
+                    </div>
+                    <div class="add-post-form">
+                        <textarea id="newPostText" placeholder="새 게시물 내용을 입력하세요"></textarea>
+                        <button id="addPostButton">추가</button>
+                    </div>
+                </div>
+            `;
+        }
+
+        function attachEditButtons(contentId) {
+            const editButtons = document.querySelectorAll('.edit-button');
+            const editForm = document.querySelector('.edit-form');
+            const editText = document.getElementById('editText');
+            const saveEditButton = document.getElementById('saveEditButton');
+            const cancelEditButton = document.getElementById('cancelEditButton');
+            let currentPost;
+
+            editButtons.forEach(button => {
+                button.addEventListener('click', function() {
+                    currentPost = this.parentElement;
+                    editText.value = currentPost.innerText.replace('수정', '').trim();
+                    editForm.style.display = 'block';
+                });
+            });
+
+            saveEditButton.addEventListener('click', function() {
+                const postId = currentPost.getAttribute('data-post-id');
+                const newPostContent = editText.value;
+                currentPost.innerHTML = `${newPostContent} <button class="edit-button">수정</button>`;
+                itemsData[contentId].posts[parseInt(postId.split('-post')[1])] = newPostContent;
+                localStorage.setItem('itemsData', JSON.stringify(itemsData));
+                attachEditButtons(contentId);
+                editForm.style.display = 'none';
+            });
+
+            cancelEditButton.addEventListener('click', function() {
+                editForm.style.display = 'none';
+            });
+        }
+
+        function attachTitleEditButton(contentId) {
+            const editTitleButton = document.getElementById('editTitleButton');
+            const boardTitle = document.getElementById('boardTitle');
+            editTitleButton.addEventListener('click', function() {
+                const newTitle = prompt('새 제목을 입력하세요:', boardTitle.childNodes[0].nodeValue.trim());
+                if (newTitle) {
+                    boardTitle.childNodes[0].nodeValue = newTitle + ' ';
+                    itemsData[contentId].title = newTitle;
+                    localStorage.setItem('itemsData', JSON.stringify(itemsData));
+                    const itemElement = document.querySelector(`.item[data-content="${contentId}"]`);
+                    itemElement.innerHTML = `<input type="checkbox"> ${newTitle}`;
+                }
+            });
+        }
+
+        function attachAddPostButton(contentId) {
+            const addPostButton = document.getElementById('addPostButton');
+            const newPostText = document.getElementById('newPostText');
+            addPostButton.addEventListener('click', function() {
+                const newPostContent = newPostText.value.trim();
+                if (newPostContent) {
+                    itemsData[contentId].posts.push(newPostContent);
+                    localStorage.setItem('itemsData', JSON.stringify(itemsData));
+                    displayContent(contentId);
+                }
+            });
+        }
+    </script>
+</body>
+</html>
